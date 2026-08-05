@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f3f0e8">
-  <title>How Many Dots? v3</title>
+  <title>How Many Dots? v4</title>
   <style>
     :root {
       --bg: #f3f0e8;
@@ -57,6 +57,8 @@
       height: 100%;
       display: none;
       background: var(--bg);
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
 
     .screen {
@@ -242,6 +244,57 @@
       margin-top: 10px;
       color: var(--muted);
       font-size: 13px;
+    }
+
+    .explore-card {
+      background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+    }
+
+    .explore-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 24px;
+    }
+
+    .explore-choice {
+      min-height: 50px;
+      padding: 10px 8px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-solid);
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 760;
+      font-size: 15px;
+    }
+
+    .explore-choice.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--accent-text);
+    }
+
+    .explore-reading {
+      margin-top: 19px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--panel-solid) 90%, transparent);
+    }
+
+    .explore-reading strong {
+      display: block;
+      font-size: clamp(28px, 5vw, 42px);
+      letter-spacing: -0.045em;
+    }
+
+    .explore-reading span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
     }
 
     .swatch {
@@ -501,6 +554,7 @@
       .answer:last-child:nth-child(odd) { grid-column: auto; }
       .answer { min-height: 58px; }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .explore-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .toolbar { left: 12px; right: 12px; justify-content: flex-end; }
       .tool-button { padding-inline: 12px; }
       .rank-row { grid-template-columns: 100px 1fr 44px; }
@@ -567,6 +621,7 @@
 
         <div class="button-row">
           <button id="startButton" class="primary" type="button">Start game</button>
+          <button id="exploreButton" class="secondary" type="button">Explore quantities</button>
           <button id="statsButton" class="secondary" type="button">Statistics</button>
         </div>
 
@@ -574,6 +629,39 @@
           <span>1–1,000,000 dots</span>
           <span>3 seconds</span>
           <span>results saved locally</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="exploreScreen" class="screen hidden">
+      <div class="card explore-card">
+        <div class="round-label">Explore</div>
+        <h2>Compare quantities</h2>
+        <p>
+          Select a number and examine its dot field for as long as you like.
+          This is useful for learning how density changes at the upper end.
+        </p>
+
+        <div id="exploreGrid" class="explore-grid">
+          <button class="explore-choice" type="button" data-count="1">1</button>
+          <button class="explore-choice" type="button" data-count="10">10</button>
+          <button class="explore-choice" type="button" data-count="100">100</button>
+          <button class="explore-choice" type="button" data-count="1000">1,000</button>
+          <button class="explore-choice" type="button" data-count="10000">10,000</button>
+          <button class="explore-choice" type="button" data-count="50000">50,000</button>
+          <button class="explore-choice" type="button" data-count="100000">100,000</button>
+          <button class="explore-choice" type="button" data-count="250000">250,000</button>
+          <button class="explore-choice" type="button" data-count="500000">500,000</button>
+          <button class="explore-choice" type="button" data-count="1000000">1,000,000</button>
+        </div>
+
+        <div class="explore-reading">
+          <strong id="exploreCountLabel">10,000 dots</strong>
+          <span id="explorePixelNote"></span>
+        </div>
+
+        <div class="button-row">
+          <button id="closeExploreButton" class="primary" type="button">Back to game</button>
         </div>
       </div>
     </section>
@@ -677,12 +765,18 @@
       const canvas = document.getElementById("dotCanvas");
       const ctx = canvas.getContext("2d", { alpha: true });
       const introScreen = document.getElementById("introScreen");
+      const exploreScreen = document.getElementById("exploreScreen");
       const quizScreen = document.getElementById("quizScreen");
       const summaryScreen = document.getElementById("summaryScreen");
       const toolbar = document.getElementById("toolbar");
       const flashLabel = document.getElementById("flashLabel");
 
       const startButton = document.getElementById("startButton");
+      const exploreButton = document.getElementById("exploreButton");
+      const closeExploreButton = document.getElementById("closeExploreButton");
+      const exploreGrid = document.getElementById("exploreGrid");
+      const exploreCountLabel = document.getElementById("exploreCountLabel");
+      const explorePixelNote = document.getElementById("explorePixelNote");
       const nextButton = document.getElementById("nextButton");
       const quitButton = document.getElementById("quitButton");
       const playAgainButton = document.getElementById("playAgainButton");
@@ -719,6 +813,7 @@
       let lifetime = loadLifetime();
       let activePalette = "paper";
       let gameActive = false;
+      let exploreCount = 10_000;
 
       function freshSession() {
         return {
@@ -979,20 +1074,22 @@
       function drawDots(count) {
         const cssWidth = Math.max(1, window.innerWidth);
         const cssHeight = Math.max(1, window.innerHeight);
-        const deviceScale = Math.min(window.devicePixelRatio || 1, 2.5);
 
-        // High counts use a larger internal plotting surface. Each dot remains
-        // one exact pixel, but the field no longer turns into a solid black mass.
-        const desiredPixelsPerDot = count > 100_000 ? 8 : count > 30_000 ? 5 : 2;
-        const densityScale = Math.sqrt((count * desiredPixelsPerDot) / (cssWidth * cssHeight));
-        const renderScale = Math.min(3.2, Math.max(deviceScale, densityScale, 1));
-
-        const width = Math.max(1, Math.round(cssWidth * renderScale));
-        const height = Math.max(1, Math.round(cssHeight * renderScale));
+        // Canvas pixels are now mapped directly to the screen's native pixels.
+        // The old version sometimes rendered at a still-larger scale and then
+        // shrank the bitmap, which made a one-pixel dot become a blurred fraction
+        // of a visible pixel.
+        const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
+        const width = Math.max(1, Math.round(cssWidth * dpr));
+        const height = Math.max(1, Math.round(cssHeight * dpr));
 
         canvas.width = width;
         canvas.height = height;
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
         canvas.style.background = palettes[activePalette].bg;
+
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = palettes[activePalette].dot;
 
@@ -1003,7 +1100,10 @@
           const rows = Math.max(1, Math.ceil(count / cols));
           const cellW = width / cols;
           const cellH = height / rows;
-          const radius = Math.max(1.1, Math.min(7 * renderScale, Math.min(cellW, cellH) * 0.27));
+          const radius = Math.max(
+            1.15 * dpr,
+            Math.min(7 * dpr, Math.min(cellW, cellH) * 0.27)
+          );
           const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
 
           ctx.beginPath();
@@ -1021,30 +1121,51 @@
           return;
         }
 
-        // For dense fields, draw exact single-pixel microdots into transparent
-        // ImageData. A compact bitset prevents overlaps, so 1,000,000 means
-        // exactly 1,000,000 visible marks.
         const totalPixels = width * height;
+        const rgb = hexToRgb(palettes[activePalette].dot);
         const image = ctx.createImageData(width, height);
         const data = image.data;
-        const used = new Uint8Array(Math.ceil(totalPixels / 8));
         const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
-        const rgb = hexToRgb(palettes[activePalette].dot);
 
-        let placed = 0;
-        while (placed < count) {
-          const pixel = rand() % totalPixels;
-          const byteIndex = pixel >> 3;
-          const bitMask = 1 << (pixel & 7);
-          if (used[byteIndex] & bitMask) continue;
-          used[byteIndex] |= bitMask;
+        if (count <= totalPixels) {
+          // Each logical dot owns one unique native display pixel. A bitset keeps
+          // the count exact and prevents random overlaps from hiding dots.
+          const used = new Uint8Array(Math.ceil(totalPixels / 8));
+          let placed = 0;
 
-          const offset = pixel * 4;
-          data[offset] = rgb.r;
-          data[offset + 1] = rgb.g;
-          data[offset + 2] = rgb.b;
-          data[offset + 3] = 255;
-          placed++;
+          while (placed < count) {
+            const pixel = rand() % totalPixels;
+            const byteIndex = pixel >> 3;
+            const bitMask = 1 << (pixel & 7);
+            if (used[byteIndex] & bitMask) continue;
+            used[byteIndex] |= bitMask;
+
+            const offset = pixel * 4;
+            data[offset] = rgb.r;
+            data[offset + 1] = rgb.g;
+            data[offset + 2] = rgb.b;
+            data[offset + 3] = 255;
+            placed++;
+          }
+        } else {
+          // Very small or low-resolution screens can contain fewer physical
+          // pixels than requested dots. Record repeated hits and encode them as
+          // progressively stronger coverage rather than silently discarding them.
+          const hits = new Uint8Array(totalPixels);
+          for (let i = 0; i < count; i++) {
+            const pixel = rand() % totalPixels;
+            if (hits[pixel] < 4) hits[pixel]++;
+          }
+
+          for (let pixel = 0; pixel < totalPixels; pixel++) {
+            const hitCount = hits[pixel];
+            if (!hitCount) continue;
+            const offset = pixel * 4;
+            data[offset] = rgb.r;
+            data[offset + 1] = rgb.g;
+            data[offset + 2] = rgb.b;
+            data[offset + 3] = [0, 120, 190, 232, 255][hitCount];
+          }
         }
 
         ctx.putImageData(image, 0, 0);
@@ -1132,7 +1253,55 @@
         }
       }
 
+
+      function physicalPixelCount() {
+        const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
+        return Math.round(window.innerWidth * dpr) * Math.round(window.innerHeight * dpr);
+      }
+
+      function showExploreCount(count) {
+        exploreCount = count;
+        drawDots(count);
+        canvas.style.display = "block";
+        exploreCountLabel.textContent = `${formatNumber(count)} ${count === 1 ? "dot" : "dots"}`;
+
+        const pixels = physicalPixelCount();
+        const ratio = count / pixels;
+        if (ratio <= 1) {
+          explorePixelNote.textContent =
+            `This display provides about ${formatNumber(pixels)} native pixels, so each dense microdot can occupy its own physical pixel.`;
+        } else {
+          explorePixelNote.textContent =
+            `This display provides about ${formatNumber(pixels)} native pixels, so some of these dots must share pixels and are represented by stronger density.`;
+        }
+
+        for (const button of exploreGrid.querySelectorAll(".explore-choice")) {
+          button.classList.toggle("active", Number(button.dataset.count) === count);
+        }
+      }
+
+      function openExplore() {
+        gameActive = false;
+        introScreen.classList.add("hidden");
+        exploreScreen.classList.add("hidden");
+        quizScreen.classList.add("hidden");
+        summaryScreen.classList.add("hidden");
+        exploreScreen.classList.remove("hidden");
+        toolbar.classList.remove("hidden");
+        showExploreCount(exploreCount);
+      }
+
+      function closeExplore() {
+        exploreScreen.classList.add("hidden");
+        canvas.style.display = "none";
+        introScreen.classList.remove("hidden");
+      }
+
       function updateSessionMeta() {
+        // Bring the original field back behind the answer panel. It remains
+        // visible through the result and summary until another round begins.
+        canvas.style.display = "block";
+
         const typical = typicalMiss(session.history);
         scoreText.textContent = `Exact: ${session.exact}`;
         sessionErrorText.textContent = Number.isFinite(typical)
@@ -1277,6 +1446,8 @@
 
       function showHome() {
         gameActive = false;
+        canvas.style.display = "none";
+        exploreScreen.classList.add("hidden");
         quizScreen.classList.add("hidden");
         summaryScreen.classList.add("hidden");
         introScreen.classList.remove("hidden");
@@ -1350,6 +1521,14 @@
 
       paletteSelect.addEventListener("change", () => applyPalette(paletteSelect.value));
       startButton.addEventListener("click", startGame);
+      exploreButton.addEventListener("click", openExplore);
+      closeExploreButton.addEventListener("click", closeExplore);
+
+      exploreGrid.addEventListener("click", event => {
+        const button = event.target.closest(".explore-choice");
+        if (!button) return;
+        showExploreCount(Number(button.dataset.count));
+      });
 
       nextButton.addEventListener("click", () => {
         const limit = mode === "continuous" ? Infinity : Number(mode);
@@ -1384,6 +1563,16 @@
       fullscreenButton.addEventListener("click", toggleFullscreen);
       document.addEventListener("fullscreenchange", updateFullscreenLabel);
       document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
+
+      let resizeTimer = null;
+      window.addEventListener("resize", () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(() => {
+          if (!exploreScreen.classList.contains("hidden")) {
+            showExploreCount(exploreCount);
+          }
+        }, 140);
+      });
 
       const prefs = loadPrefs();
       if (prefs.palette && palettes[prefs.palette]) {
