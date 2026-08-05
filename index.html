@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f3f0e8">
-  <title>How Many Dots?</title>
+  <title>How Many Dots? v3</title>
   <style>
     :root {
       --bg: #f3f0e8;
@@ -370,6 +370,54 @@
       line-height: 1.2;
     }
 
+    .profile-box {
+      margin-top: 24px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: color-mix(in srgb, var(--accent) 7%, var(--panel-solid));
+      text-align: left;
+    }
+
+    .profile-heading {
+      margin: 0 0 7px;
+      font-size: clamp(22px, 4vw, 30px);
+      letter-spacing: -0.035em;
+    }
+
+    .profile-confidence {
+      display: inline-block;
+      margin-bottom: 12px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: var(--panel-solid);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .profile-copy {
+      display: grid;
+      gap: 9px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.48;
+    }
+
+    .profile-copy strong {
+      font-weight: 800;
+    }
+
+    .stats-note {
+      margin-top: 18px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     .rank-list {
       display: grid;
       gap: 8px;
@@ -469,7 +517,6 @@
     <div id="flashLabel" class="hidden">Look carefully</div>
 
     <nav id="toolbar" class="toolbar" aria-label="Game controls">
-      <button id="statsButton" class="tool-button" type="button">Statistics</button>
       <button id="fullscreenButton" class="tool-button" type="button">Full screen</button>
     </nav>
 
@@ -520,6 +567,7 @@
 
         <div class="button-row">
           <button id="startButton" class="primary" type="button">Start game</button>
+          <button id="statsButton" class="secondary" type="button">Statistics</button>
         </div>
 
         <div class="meta">
@@ -543,7 +591,7 @@
         </div>
         <div class="meta">
           <span id="scoreText">Exact: 0</span>
-          <span id="sessionErrorText">Average error: —</span>
+          <span id="sessionErrorText">Typical miss: —</span>
         </div>
       </div>
     </section>
@@ -558,6 +606,7 @@
         <div class="button-row">
           <button id="playAgainButton" class="primary" type="button">Play again</button>
           <button id="homeButton" class="secondary" type="button">Change settings</button>
+          <button id="summaryStatsButton" class="secondary" type="button">Statistics</button>
         </div>
       </div>
     </section>
@@ -567,8 +616,13 @@
       <div class="dialog-body">
         <h2>Statistics</h2>
         <p>Stored only in this browser.</p>
+        <div id="performanceProfile" class="profile-box"></div>
         <div id="lifetimeStats" class="stats-grid"></div>
         <div id="rankList" class="rank-list"></div>
+        <p class="stats-note">
+          The ability label is an in-game guide rather than a scientific comparison
+          with the general population. It becomes more meaningful after 20–30 guesses.
+        </p>
         <div class="button-row">
           <button id="resetStatsButton" class="danger" type="button">Reset statistics</button>
         </div>
@@ -633,6 +687,7 @@
       const quitButton = document.getElementById("quitButton");
       const playAgainButton = document.getElementById("playAgainButton");
       const homeButton = document.getElementById("homeButton");
+      const summaryStatsButton = document.getElementById("summaryStatsButton");
       const fullscreenButton = document.getElementById("fullscreenButton");
       const statsButton = document.getElementById("statsButton");
 
@@ -653,6 +708,7 @@
       const statsDialog = document.getElementById("statsDialog");
       const closeStatsButton = document.getElementById("closeStatsButton");
       const resetStatsButton = document.getElementById("resetStatsButton");
+      const performanceProfile = document.getElementById("performanceProfile");
       const lifetimeStats = document.getElementById("lifetimeStats");
       const rankList = document.getElementById("rankList");
 
@@ -669,7 +725,8 @@
           rounds: 0,
           exact: 0,
           sumPctError: 0,
-          rankCounts: [0, 0, 0, 0, 0, 0]
+          rankCounts: [0, 0, 0, 0, 0, 0],
+          history: []
         };
       }
 
@@ -721,6 +778,154 @@
         if (value < 10) return `${value.toFixed(1)}%`;
         return `${Math.round(value)}%`;
       };
+
+
+      function median(values) {
+        const clean = values.filter(Number.isFinite).sort((a, b) => a - b);
+        if (!clean.length) return NaN;
+        const middle = Math.floor(clean.length / 2);
+        return clean.length % 2
+          ? clean[middle]
+          : (clean[middle - 1] + clean[middle]) / 2;
+      }
+
+      function typicalMiss(records) {
+        return median(records.map(record => Number(record.pctError)));
+      }
+
+      function missAsDotsPerHundred(value) {
+        if (!Number.isFinite(value)) return "—";
+        if (value < 0.5) return "<1";
+        return String(Math.round(value));
+      }
+
+      function sampleConfidence(count) {
+        if (count < 10) return "Too early to judge";
+        if (count < 25) return "Provisional reading";
+        if (count < 75) return "Useful reading";
+        return "Well-established reading";
+      }
+
+      function gameRating(records, rankCounts) {
+        if (records.length < 10) {
+          return {
+            title: "Not enough results yet",
+            detail: "Play at least 10 rounds before the game assigns an ability band."
+          };
+        }
+
+        const typical = typicalMiss(records);
+        const topTwo = records.length
+          ? ((rankCounts[1] || 0) + (rankCounts[2] || 0)) / records.length * 100
+          : 0;
+
+        if (typical <= 15 && topTwo >= 85) {
+          return {
+            title: "Highly trained-level estimator",
+            detail: "Your visual estimates are unusually tight and you very rarely stray beyond the two nearest choices."
+          };
+        }
+        if (typical <= 30 && topTwo >= 72) {
+          return {
+            title: "Very strong estimator",
+            detail: "You judge scale accurately and usually remain among the nearest answers."
+          };
+        }
+        if (typical <= 60 && topTwo >= 58) {
+          return {
+            title: "Strong estimator",
+            detail: "Your estimates are generally well calibrated, with most misses remaining fairly close."
+          };
+        }
+        if (typical <= 120) {
+          return {
+            title: "Typical estimator",
+            detail: "You usually identify the right order of magnitude, although individual guesses still vary considerably."
+          };
+        }
+        if (typical <= 250) {
+          return {
+            title: "Developing estimator",
+            detail: "You can identify broad scale, but your guesses often land more than one full answer step away."
+          };
+        }
+        return {
+          title: "Broad-range estimator",
+          detail: "Your answers currently vary by several times the real count. More rounds should reveal whether this is consistent or early-game noise."
+        };
+      }
+
+      function describeBias(records) {
+        const nonExact = records.filter(record => Number(record.guess) !== Number(record.target));
+        if (!nonExact.length) return "No high-or-low bias has appeared yet.";
+
+        const high = nonExact.filter(record => Number(record.guess) > Number(record.target)).length;
+        const highRate = high / nonExact.length;
+
+        if (highRate >= 0.62) {
+          return `You lean high: ${Math.round(highRate * 100)}% of your non-exact guesses were overestimates.`;
+        }
+        if (highRate <= 0.38) {
+          return `You lean low: ${Math.round((1 - highRate) * 100)}% of your non-exact guesses were underestimates.`;
+        }
+        return "Your high and low guesses are well balanced, with no obvious directional bias.";
+      }
+
+      function describeBestRange(records) {
+        const groups = [
+          { name: "small counts below 1,000", values: [] },
+          { name: "medium counts from 1,000 to 99,999", values: [] },
+          { name: "very large counts of 100,000 or more", values: [] }
+        ];
+
+        for (const record of records) {
+          const answer = Number(record.target);
+          const error = Number(record.pctError);
+          if (!Number.isFinite(answer) || !Number.isFinite(error)) continue;
+          if (answer < 1000) groups[0].values.push(error);
+          else if (answer < 100000) groups[1].values.push(error);
+          else groups[2].values.push(error);
+        }
+
+        const eligible = groups
+          .filter(group => group.values.length >= 3)
+          .map(group => ({ ...group, typical: median(group.values) }))
+          .sort((a, b) => a.typical - b.typical);
+
+        if (!eligible.length) {
+          return "There are not yet enough results in each size range to identify your strongest range.";
+        }
+
+        return `Your strongest range so far is ${eligible[0].name}.`;
+      }
+
+      function profileMarkup(records) {
+        const localRanks = [0, 0, 0, 0, 0, 0];
+        for (const record of records) {
+          const rank = Number(record.rank);
+          if (rank >= 1 && rank <= 5) localRanks[rank]++;
+        }
+
+        const rating = gameRating(records, localRanks);
+        const typical = typicalMiss(records);
+        const topTwoCount = localRanks[1] + localRanks[2];
+        const topTwoRate = records.length ? topTwoCount / records.length * 100 : 0;
+        const missText = Number.isFinite(typical)
+          ? `On a typical round, you were about <strong>${missAsDotsPerHundred(typical)} dots out for every 100 actually shown</strong>.`
+          : "No accuracy pattern is available yet.";
+
+        return `
+          <h3 class="profile-heading">${rating.title}</h3>
+          <span class="profile-confidence">${sampleConfidence(records.length)} · ${records.length} guesses</span>
+          <ul class="profile-copy">
+            <li>${rating.detail}</li>
+            <li>${missText}</li>
+            <li>You selected either the exact or second-closest choice <strong>${formatPct(topTwoRate)}</strong> of the time.</li>
+            <li>${describeBias(records)}</li>
+            <li>${describeBestRange(records)}</li>
+          </ul>
+        `;
+      }
 
       function randomLogInt(min, max) {
         const lo = Math.log(min);
@@ -774,18 +979,13 @@
       function drawDots(count) {
         const cssWidth = Math.max(1, window.innerWidth);
         const cssHeight = Math.max(1, window.innerHeight);
-        const deviceScale = Math.min(window.devicePixelRatio || 1, 2);
-        const baseArea = cssWidth * cssHeight;
+        const deviceScale = Math.min(window.devicePixelRatio || 1, 2.5);
 
-        // Dense rounds are plotted onto a larger hidden pixel surface, capped
-        // at roughly eight million pixels. This gives a million-dot round
-        // breathing room without creating a gigantic canvas on a 4K display.
-        const desiredPixelsPerDot = count > 100_000 ? 7 : count > 30_000 ? 4 : 2;
-        const desiredArea = Math.min(8_000_000, Math.max(baseArea, count * desiredPixelsPerDot));
-        const densityScale = Math.sqrt(desiredArea / baseArea);
-        const renderScale = count <= 25_000
-          ? Math.max(1, deviceScale)
-          : Math.max(1, densityScale);
+        // High counts use a larger internal plotting surface. Each dot remains
+        // one exact pixel, but the field no longer turns into a solid black mass.
+        const desiredPixelsPerDot = count > 100_000 ? 8 : count > 30_000 ? 5 : 2;
+        const densityScale = Math.sqrt((count * desiredPixelsPerDot) / (cssWidth * cssHeight));
+        const renderScale = Math.min(3.2, Math.max(deviceScale, densityScale, 1));
 
         const width = Math.max(1, Math.round(cssWidth * renderScale));
         const height = Math.max(1, Math.round(cssHeight * renderScale));
@@ -864,32 +1064,11 @@
 
       function makeOptions(targetValue) {
         const values = [targetValue];
-        const plans = [
-          { side: -1, min: 1.75, max: 2.55 },
-          { side: 1, min: 1.75, max: 2.55 },
-          { side: -1, min: 3.4, max: 9.0 },
-          { side: 1, min: 3.4, max: 9.0 }
-        ].sort(() => Math.random() - 0.5);
-
-        // Two moderately plausible alternatives and two broader alternatives
-        // are attempted first. All five values must remain at least 1.70× apart.
-        for (const plan of plans) {
-          for (let attempt = 0; attempt < 120; attempt++) {
-            const factor = Math.exp(
-              Math.log(plan.min) + Math.random() * (Math.log(plan.max) - Math.log(plan.min))
-            );
-            const raw = plan.side < 0 ? targetValue / factor : targetValue * factor;
-            const candidate = Math.max(MIN_DOTS, Math.min(MAX_DOTS, Math.round(raw)));
-            if (candidate === targetValue || values.includes(candidate)) continue;
-            if (!isFarEnough(candidate, values)) continue;
-            values.push(candidate);
-            break;
-          }
-        }
-
-        // Boundary fallback for targets near 1 or 1,000,000.
         const logMin = Math.log(MIN_DOTS);
         const logMax = Math.log(MAX_DOTS);
+
+        // A random walk through logarithmic number space gives irregular answers
+        // while ensuring every adjacent choice differs by at least 70%.
         let attempts = 0;
         while (values.length < 5 && attempts < 5000) {
           attempts++;
@@ -905,7 +1084,8 @@
           values.push(candidate);
         }
 
-        const factors = [1.8, 3.4, 6.5, 12.5, 24, 48, 96, 190, 380];
+        // Deterministic fallback near the extreme ends of the range.
+        const factors = [1.8, 3.4, 6.5, 12.5, 24, 48, 96, 190];
         for (const factor of factors) {
           for (const candidate of [
             Math.max(MIN_DOTS, Math.round(targetValue / factor)),
@@ -953,9 +1133,11 @@
       }
 
       function updateSessionMeta() {
-        const average = session.rounds ? session.sumPctError / session.rounds : NaN;
+        const typical = typicalMiss(session.history);
         scoreText.textContent = `Exact: ${session.exact}`;
-        sessionErrorText.textContent = `Average error: ${formatPct(average)}`;
+        sessionErrorText.textContent = Number.isFinite(typical)
+          ? `Typical miss: ${missAsDotsPerHundred(typical)} per 100`
+          : "Typical miss: —";
 
         if (mode === "continuous") {
           roundLabel.textContent = `Round ${session.rounds + 1} · Continuous`;
@@ -965,9 +1147,19 @@
       }
 
       function recordGuess(guess, rank, pctError) {
+        const record = {
+          target,
+          guess,
+          rank,
+          pctError,
+          mode,
+          time: Date.now()
+        };
+
         session.rounds++;
         session.sumPctError += pctError;
         session.rankCounts[rank]++;
+        session.history.push(record);
         if (rank === 1) session.exact++;
 
         lifetime.totalRounds++;
@@ -978,14 +1170,7 @@
           ? pctError
           : Math.min(lifetime.bestPctError, pctError);
 
-        lifetime.history.push({
-          target,
-          guess,
-          rank,
-          pctError,
-          mode,
-          time: Date.now()
-        });
+        lifetime.history.push(record);
         if (lifetime.history.length > 1000) lifetime.history.shift();
         saveLifetime();
       }
@@ -1014,9 +1199,9 @@
             `<span class="result-subline">Your choice was ${formatPct(pctError)} ${direction} and ranked ${rankNames[rank]}.</span>`;
         }
 
-        const average = session.sumPctError / session.rounds;
+        const typical = typicalMiss(session.history);
         scoreText.textContent = `Exact: ${session.exact}`;
-        sessionErrorText.textContent = `Average error: ${formatPct(average)}`;
+        sessionErrorText.textContent = `Typical miss: ${missAsDotsPerHundred(typical)} per 100`;
 
         const limit = mode === "continuous" ? Infinity : Number(mode);
         if (session.rounds >= limit) {
@@ -1068,19 +1253,20 @@
 
         const denominator = mode === "continuous" ? session.rounds : Number(mode);
         summaryScore.textContent = `${session.exact}/${denominator}`;
-        const average = session.rounds ? session.sumPctError / session.rounds : 0;
-        summaryText.textContent =
-          `You made ${session.exact} exact ${session.exact === 1 ? "guess" : "guesses"} with an average error of ${formatPct(average)}.`;
 
+        const typical = typicalMiss(session.history);
         const secondClosest = session.rankCounts[2] || 0;
-        const nearestWrong = session.rounds - session.exact
-          ? (secondClosest / (session.rounds - session.exact)) * 100
-          : 0;
+        const topTwo = session.exact + secondClosest;
+        const rating = gameRating(session.history, session.rankCounts);
+
+        summaryText.textContent = Number.isFinite(typical)
+          ? `${rating.title}. On a typical round you were about ${missAsDotsPerHundred(typical)} dots out for every 100 actually shown.`
+          : rating.detail;
 
         summaryStats.innerHTML = [
-          metric(formatPct(average), "average error"),
+          metric(missAsDotsPerHundred(typical), "dots out per 100 on a typical round"),
           metric(secondClosest, "2nd closest"),
-          metric(formatPct(nearestWrong), "wrong guesses ranked 2nd"),
+          metric(`${topTwo}/${session.rounds}`, "exact or 2nd closest"),
           metric(session.rounds, "rounds played")
         ].join("");
       }
@@ -1098,22 +1284,31 @@
       }
 
       function renderLifetimeStats() {
-        const average = lifetime.totalRounds
-          ? lifetime.sumPctError / lifetime.totalRounds
-          : NaN;
+        const records = lifetime.history.filter(record =>
+          Number.isFinite(Number(record.target)) &&
+          Number.isFinite(Number(record.guess)) &&
+          Number.isFinite(Number(record.pctError))
+        );
+        const typical = typicalMiss(records);
         const exactRate = lifetime.totalRounds
           ? lifetime.exact / lifetime.totalRounds * 100
           : 0;
+        const topTwo = (lifetime.rankCounts[1] || 0) + (lifetime.rankCounts[2] || 0);
+        const topTwoRate = lifetime.totalRounds
+          ? topTwo / lifetime.totalRounds * 100
+          : 0;
+
+        performanceProfile.innerHTML = profileMarkup(records);
 
         lifetimeStats.innerHTML = [
           metric(lifetime.totalRounds, "total guesses"),
           metric(lifetime.exact, "exact"),
           metric(formatPct(exactRate), "exact rate"),
-          metric(formatPct(average), "average error"),
+          metric(missAsDotsPerHundred(typical), "dots out per 100 on a typical round"),
           metric(lifetime.rankCounts[2] || 0, "2nd closest"),
+          metric(formatPct(topTwoRate), "exact or 2nd closest"),
           metric(lifetime.rankCounts[3] || 0, "3rd closest"),
-          metric(lifetime.rankCounts[4] || 0, "4th closest"),
-          metric(lifetime.rankCounts[5] || 0, "5th closest")
+          metric(lifetime.rankCounts[4] || 0, "4th closest")
         ].join("");
 
         const maxCount = Math.max(1, ...lifetime.rankCounts.slice(1));
@@ -1169,10 +1364,13 @@
       });
       homeButton.addEventListener("click", showHome);
 
-      statsButton.addEventListener("click", () => {
+      function openStatistics() {
         renderLifetimeStats();
         statsDialog.showModal();
-      });
+      }
+
+      statsButton.addEventListener("click", openStatistics);
+      summaryStatsButton.addEventListener("click", openStatistics);
       closeStatsButton.addEventListener("click", () => statsDialog.close());
 
       resetStatsButton.addEventListener("click", () => {
