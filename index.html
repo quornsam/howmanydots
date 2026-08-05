@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#f3f0e8">
-  <title>How Many Dots? v4</title>
+  <title>How Many Dots? v5</title>
   <style>
     :root {
       --bg: #f3f0e8;
@@ -639,7 +639,8 @@
         <h2>Compare quantities</h2>
         <p>
           Select a number and examine its dot field for as long as you like.
-          This is useful for learning how density changes at the upper end.
+          Higher quantities add to the same underlying pattern, making the
+          change in density easier to compare.
         </p>
 
         <div id="exploreGrid" class="explore-grid">
@@ -1071,15 +1072,12 @@
         };
       }
 
-      function drawDots(count) {
+      function drawDots(count, fixedSeed = null) {
         const cssWidth = Math.max(1, window.innerWidth);
         const cssHeight = Math.max(1, window.innerHeight);
-
-        // Canvas pixels are now mapped directly to the screen's native pixels.
-        // The old version sometimes rendered at a still-larger scale and then
-        // shrank the bitmap, which made a one-pixel dot become a blurred fraction
-        // of a visible pixel.
+        const cssArea = cssWidth * cssHeight;
         const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2.5));
+
         const width = Math.max(1, Math.round(cssWidth * dpr));
         const height = Math.max(1, Math.round(cssHeight * dpr));
 
@@ -1093,82 +1091,106 @@
         ctx.clearRect(0, 0, width, height);
         ctx.fillStyle = palettes[activePalette].dot;
 
-        const aspect = width / height;
+        const seed = fixedSeed === null
+          ? ((Math.random() * 0xffffffff) >>> 0)
+          : (fixedSeed >>> 0);
+        const rand = xorshift(seed);
 
-        if (count <= 25_000) {
+        // Small quantities remain true, individually drawn circles.
+        // Above 2,000, all quantities use one consistent density renderer.
+        // This removes the old discontinuity where 10,000 used large circles
+        // but 50,000 abruptly changed to sub-pixel-looking specks.
+        if (count <= 2_000) {
+          let diameterCss;
+          if (count <= 10) diameterCss = 12;
+          else if (count <= 100) diameterCss = 7;
+          else if (count <= 1_000) diameterCss = 4;
+          else diameterCss = cssArea < 700_000 ? 1.5 : 2;
+
+          const radius = diameterCss * dpr / 2;
+          const aspect = width / height;
           const cols = Math.max(1, Math.ceil(Math.sqrt(count * aspect)));
           const rows = Math.max(1, Math.ceil(count / cols));
           const cellW = width / cols;
           const cellH = height / rows;
-          const radius = Math.max(
-            1.15 * dpr,
-            Math.min(7 * dpr, Math.min(cellW, cellH) * 0.27)
-          );
-          const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
 
           ctx.beginPath();
           for (let i = 0; i < count; i++) {
             const col = i % cols;
             const row = Math.floor(i / cols);
-            const jx = 0.14 + (rand() / 4294967296) * 0.72;
-            const jy = 0.14 + (rand() / 4294967296) * 0.72;
+            const jx = 0.13 + (rand() / 4294967296) * 0.74;
+            const jy = 0.13 + (rand() / 4294967296) * 0.74;
             const x = (col + jx) * cellW;
             const y = (row + jy) * cellH;
             ctx.moveTo(x + radius, y);
             ctx.arc(x, y, radius, 0, Math.PI * 2);
           }
           ctx.fill();
-          return;
+
+          const approximateCoverage = Math.min(
+            100,
+            count * Math.PI * (diameterCss / 2) ** 2 / cssArea * 100
+          );
+
+          return {
+            mode: "individual",
+            diameterCss,
+            coverage: approximateCoverage,
+            occupied: count,
+            cells: null
+          };
         }
 
-        const totalPixels = width * height;
+        // Use a 2 CSS-pixel visual cell on roomy desktop displays. On smaller
+        // displays use 1 CSS pixel so the upper range does not saturate too soon.
+        const cellSizeCss = cssArea < 700_000 ? 1 : 2;
+        const gridWidth = Math.max(1, Math.ceil(cssWidth / cellSizeCss));
+        const gridHeight = Math.max(1, Math.ceil(cssHeight / cellSizeCss));
+        const totalCells = gridWidth * gridHeight;
+
+        // Every logical dot is placed into the same fixed-size visual grid.
+        // Overlaps occur naturally. This makes perceived density increase
+        // smoothly and monotonically from 10,000 through 1,000,000.
+        const occupied = new Uint8Array(totalCells);
+        let occupiedCount = 0;
+
+        for (let i = 0; i < count; i++) {
+          const cell = rand() % totalCells;
+          if (occupied[cell] === 0) {
+            occupied[cell] = 1;
+            occupiedCount++;
+          }
+        }
+
         const rgb = hexToRgb(palettes[activePalette].dot);
-        const image = ctx.createImageData(width, height);
+        const image = new ImageData(gridWidth, gridHeight);
         const data = image.data;
-        const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
 
-        if (count <= totalPixels) {
-          // Each logical dot owns one unique native display pixel. A bitset keeps
-          // the count exact and prevents random overlaps from hiding dots.
-          const used = new Uint8Array(Math.ceil(totalPixels / 8));
-          let placed = 0;
-
-          while (placed < count) {
-            const pixel = rand() % totalPixels;
-            const byteIndex = pixel >> 3;
-            const bitMask = 1 << (pixel & 7);
-            if (used[byteIndex] & bitMask) continue;
-            used[byteIndex] |= bitMask;
-
-            const offset = pixel * 4;
-            data[offset] = rgb.r;
-            data[offset + 1] = rgb.g;
-            data[offset + 2] = rgb.b;
-            data[offset + 3] = 255;
-            placed++;
-          }
-        } else {
-          // Very small or low-resolution screens can contain fewer physical
-          // pixels than requested dots. Record repeated hits and encode them as
-          // progressively stronger coverage rather than silently discarding them.
-          const hits = new Uint8Array(totalPixels);
-          for (let i = 0; i < count; i++) {
-            const pixel = rand() % totalPixels;
-            if (hits[pixel] < 4) hits[pixel]++;
-          }
-
-          for (let pixel = 0; pixel < totalPixels; pixel++) {
-            const hitCount = hits[pixel];
-            if (!hitCount) continue;
-            const offset = pixel * 4;
-            data[offset] = rgb.r;
-            data[offset + 1] = rgb.g;
-            data[offset + 2] = rgb.b;
-            data[offset + 3] = [0, 120, 190, 232, 255][hitCount];
-          }
+        for (let cell = 0; cell < totalCells; cell++) {
+          if (occupied[cell] === 0) continue;
+          const offset = cell * 4;
+          data[offset] = rgb.r;
+          data[offset + 1] = rgb.g;
+          data[offset + 2] = rgb.b;
+          data[offset + 3] = 255;
         }
 
-        ctx.putImageData(image, 0, 0);
+        const densityCanvas = document.createElement("canvas");
+        densityCanvas.width = gridWidth;
+        densityCanvas.height = gridHeight;
+        const densityContext = densityCanvas.getContext("2d", { alpha: true });
+        densityContext.putImageData(image, 0, 0);
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(densityCanvas, 0, 0, width, height);
+
+        return {
+          mode: "density",
+          cellSizeCss,
+          coverage: occupiedCount / totalCells * 100,
+          occupied: occupiedCount,
+          cells: totalCells
+        };
       }
 
       function optionDistance(a, b) {
@@ -1261,18 +1283,22 @@
 
       function showExploreCount(count) {
         exploreCount = count;
-        drawDots(count);
+
+        // A fixed seed means 50,000 contains the same first 10,000 placements,
+        // then adds another 40,000. Comparisons are therefore direct rather
+        // than being obscured by a completely different random arrangement.
+        const renderInfo = drawDots(count, 0x4d595df4);
+
         canvas.style.display = "block";
         exploreCountLabel.textContent = `${formatNumber(count)} ${count === 1 ? "dot" : "dots"}`;
 
-        const pixels = physicalPixelCount();
-        const ratio = count / pixels;
-        if (ratio <= 1) {
+        if (renderInfo.mode === "individual") {
           explorePixelNote.textContent =
-            `This display provides about ${formatNumber(pixels)} native pixels, so each dense microdot can occupy its own physical pixel.`;
+            `Each dot is drawn individually at about ${renderInfo.diameterCss} screen pixels wide.`;
         } else {
           explorePixelNote.textContent =
-            `This display provides about ${formatNumber(pixels)} native pixels, so some of these dots must share pixels and are represented by stronger density.`;
+            `The same fixed ${renderInfo.cellSizeCss}-pixel visual scale is used for every quantity above 2,000. ` +
+            `This field currently occupies about ${renderInfo.coverage.toFixed(1)}% of the available positions.`;
         }
 
         for (const button of exploreGrid.querySelectorAll(".explore-choice")) {
