@@ -1,0 +1,1204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f3f0e8">
+  <title>How Many Dots?</title>
+  <style>
+    :root {
+      --bg: #f3f0e8;
+      --dot: #11110f;
+      --text: #11110f;
+      --muted: #6c6961;
+      --panel: rgba(255, 255, 255, 0.68);
+      --panel-solid: #faf8f2;
+      --line: rgba(17, 17, 15, 0.15);
+      --accent: #11110f;
+      --accent-text: #f3f0e8;
+      --good: #287a4d;
+      --bad: #a33a32;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      overflow-x: hidden;
+    }
+
+    button, select {
+      font: inherit;
+    }
+
+    button {
+      color: inherit;
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      min-height: 100svh;
+      background: var(--bg);
+    }
+
+    #dotCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: none;
+      background: var(--bg);
+    }
+
+    .screen {
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      padding: 84px 24px 28px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .card {
+      width: min(760px, 100%);
+      padding: clamp(26px, 5vw, 54px);
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--panel);
+      box-shadow: 0 20px 70px rgba(20, 18, 14, 0.08);
+      backdrop-filter: blur(12px);
+    }
+
+    h1 {
+      margin: 0 0 14px;
+      font-size: clamp(42px, 8vw, 82px);
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      font-weight: 800;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: clamp(31px, 5vw, 54px);
+      line-height: 1;
+      letter-spacing: -0.045em;
+    }
+
+    h3 {
+      margin: 0 0 15px;
+      font-size: 21px;
+    }
+
+    p {
+      margin: 0 auto;
+      max-width: 590px;
+      color: var(--muted);
+      font-size: clamp(16px, 2.2vw, 19px);
+      line-height: 1.55;
+    }
+
+    .toolbar {
+      position: fixed;
+      z-index: 20;
+      top: max(14px, env(safe-area-inset-top));
+      right: max(14px, env(safe-area-inset-right));
+      display: flex;
+      gap: 8px;
+    }
+
+    .tool-button {
+      min-height: 42px;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel-solid);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .primary, .secondary, .danger {
+      min-height: 50px;
+      padding: 13px 23px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 760;
+      font-size: 17px;
+    }
+
+    .primary {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: var(--accent-text);
+    }
+
+    .secondary {
+      border: 1px solid var(--line);
+      background: var(--panel-solid);
+      color: var(--text);
+    }
+
+    .danger {
+      border: 1px solid rgba(163, 58, 50, 0.45);
+      background: transparent;
+      color: var(--bad);
+    }
+
+    .primary:hover, .secondary:hover, .danger:hover, .tool-button:hover, .answer:hover {
+      transform: translateY(-1px);
+    }
+
+    .button-row {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 26px;
+      flex-wrap: wrap;
+    }
+
+    .setup-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-top: 28px;
+      text-align: left;
+    }
+
+    .setting-group {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255,255,255,0.34);
+    }
+
+    .setting-label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    select {
+      width: 100%;
+      min-height: 48px;
+      padding: 10px 40px 10px 13px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-solid);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .mode-options {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mode-choice {
+      position: relative;
+      display: block;
+    }
+
+    .mode-choice input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .mode-choice span {
+      display: block;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-solid);
+      cursor: pointer;
+      font-weight: 720;
+    }
+
+    .mode-choice input:checked + span {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+
+    .palette-preview {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+    }
+
+    .meta {
+      display: flex;
+      justify-content: center;
+      gap: 22px;
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 14px;
+      flex-wrap: wrap;
+    }
+
+    .round-label {
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .answer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 26px;
+    }
+
+    .answer {
+      min-height: 68px;
+      padding: 14px 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-solid);
+      color: var(--text);
+      cursor: pointer;
+      font-size: clamp(20px, 3.5vw, 30px);
+      font-weight: 780;
+      letter-spacing: -0.025em;
+    }
+
+    .answer:last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+
+    .answer.correct {
+      color: white;
+      background: var(--good);
+      border-color: transparent;
+    }
+
+    .answer.wrong {
+      color: white;
+      background: var(--bad);
+      border-color: transparent;
+    }
+
+    .answer:disabled {
+      cursor: default;
+      transform: none;
+    }
+
+    #resultText {
+      min-height: 54px;
+      margin-top: 20px;
+      font-size: 17px;
+      line-height: 1.45;
+      font-weight: 700;
+    }
+
+    .result-subline {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    #flashLabel {
+      position: fixed;
+      z-index: 4;
+      left: 50%;
+      bottom: max(18px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      padding: 8px 13px;
+      border-radius: 999px;
+      color: color-mix(in srgb, var(--text) 48%, transparent);
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      font-size: 13px;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .stat {
+      padding: 15px 10px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(255,255,255,0.35);
+    }
+
+    .stat strong {
+      display: block;
+      font-size: clamp(23px, 4vw, 34px);
+      letter-spacing: -0.04em;
+    }
+
+    .stat span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .rank-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 22px;
+      text-align: left;
+    }
+
+    .rank-row {
+      display: grid;
+      grid-template-columns: 118px 1fr 54px;
+      gap: 10px;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    .rank-track {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--text) 10%, transparent);
+    }
+
+    .rank-fill {
+      height: 100%;
+      min-width: 0;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    dialog {
+      width: min(720px, calc(100% - 28px));
+      max-height: calc(100svh - 28px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      padding: 0;
+      color: var(--text);
+      background: var(--panel-solid);
+      box-shadow: 0 24px 100px rgba(0,0,0,0.2);
+    }
+
+    dialog::backdrop {
+      background: rgba(0,0,0,0.38);
+      backdrop-filter: blur(4px);
+    }
+
+    .dialog-body {
+      padding: 28px;
+      text-align: center;
+    }
+
+    .close-x {
+      position: sticky;
+      z-index: 2;
+      float: right;
+      top: 12px;
+      margin: 12px 12px 0 0;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--panel-solid);
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .session-score {
+      margin: 20px 0 6px;
+      font-size: clamp(50px, 10vw, 88px);
+      line-height: 1;
+      font-weight: 830;
+      letter-spacing: -0.06em;
+    }
+
+    @media (max-width: 660px) {
+      .screen { padding: 76px 14px 20px; }
+      .card { padding: 26px 17px; border-radius: 22px; }
+      .setup-grid { grid-template-columns: 1fr; }
+      .answer-grid { grid-template-columns: 1fr; }
+      .answer:last-child:nth-child(odd) { grid-column: auto; }
+      .answer { min-height: 58px; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .toolbar { left: 12px; right: 12px; justify-content: flex-end; }
+      .tool-button { padding-inline: 12px; }
+      .rank-row { grid-template-columns: 100px 1fr 44px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main id="app">
+    <canvas id="dotCanvas" aria-label="A field containing black dots"></canvas>
+    <div id="flashLabel" class="hidden">Look carefully</div>
+
+    <nav id="toolbar" class="toolbar" aria-label="Game controls">
+      <button id="statsButton" class="tool-button" type="button">Statistics</button>
+      <button id="fullscreenButton" class="tool-button" type="button">Full screen</button>
+    </nav>
+
+    <section id="introScreen" class="screen">
+      <div class="card">
+        <h1>How many dots?</h1>
+        <p>
+          A random field of dots appears for three seconds. Estimate the total,
+          then see how close your choice was.
+        </p>
+
+        <div class="setup-grid">
+          <div class="setting-group">
+            <span class="setting-label">Game mode</span>
+            <div class="mode-options">
+              <label class="mode-choice">
+                <input type="radio" name="mode" value="5" checked>
+                <span>Best of 5</span>
+              </label>
+              <label class="mode-choice">
+                <input type="radio" name="mode" value="10">
+                <span>Best of 10</span>
+              </label>
+              <label class="mode-choice">
+                <input type="radio" name="mode" value="continuous">
+                <span>Continuous</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-group">
+            <label class="setting-label" for="paletteSelect">Colour palette</label>
+            <select id="paletteSelect">
+              <option value="paper">Soft paper</option>
+              <option value="warm">Warm cream</option>
+              <option value="sage">Sage</option>
+              <option value="blueprint">Blueprint</option>
+              <option value="night">Night</option>
+              <option value="contrast">High contrast</option>
+            </select>
+            <div class="palette-preview">
+              <span id="bgSwatch" class="swatch"></span>
+              <span id="dotSwatch" class="swatch"></span>
+              <span>background and dots</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="button-row">
+          <button id="startButton" class="primary" type="button">Start game</button>
+        </div>
+
+        <div class="meta">
+          <span>1–1,000,000 dots</span>
+          <span>3 seconds</span>
+          <span>results saved locally</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="quizScreen" class="screen hidden">
+      <div class="card">
+        <div id="roundLabel" class="round-label"></div>
+        <h2>How many dots?</h2>
+        <p>Choose your best estimate.</p>
+        <div id="answerGrid" class="answer-grid"></div>
+        <div id="resultText" aria-live="polite"></div>
+        <div class="button-row">
+          <button id="nextButton" class="primary hidden" type="button">Next round</button>
+          <button id="quitButton" class="secondary hidden" type="button">End game</button>
+        </div>
+        <div class="meta">
+          <span id="scoreText">Exact: 0</span>
+          <span id="sessionErrorText">Average error: —</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="summaryScreen" class="screen hidden">
+      <div class="card">
+        <div class="round-label">Game complete</div>
+        <h2>Your result</h2>
+        <div id="summaryScore" class="session-score">0/5</div>
+        <p id="summaryText"></p>
+        <div id="summaryStats" class="stats-grid"></div>
+        <div class="button-row">
+          <button id="playAgainButton" class="primary" type="button">Play again</button>
+          <button id="homeButton" class="secondary" type="button">Change settings</button>
+        </div>
+      </div>
+    </section>
+
+    <dialog id="statsDialog">
+      <button id="closeStatsButton" class="close-x" type="button" aria-label="Close">×</button>
+      <div class="dialog-body">
+        <h2>Statistics</h2>
+        <p>Stored only in this browser.</p>
+        <div id="lifetimeStats" class="stats-grid"></div>
+        <div id="rankList" class="rank-list"></div>
+        <div class="button-row">
+          <button id="resetStatsButton" class="danger" type="button">Reset statistics</button>
+        </div>
+      </div>
+    </dialog>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const MIN_DOTS = 1;
+      const MAX_DOTS = 1_000_000;
+      const DISPLAY_MS = 3000;
+      const MIN_OPTION_RATIO = 1.70;
+      const STORAGE_KEY = "howManyDotsStatsV2";
+      const PREFS_KEY = "howManyDotsPrefsV2";
+
+      const palettes = {
+        paper: {
+          bg: "#f3f0e8", dot: "#11110f", text: "#11110f", muted: "#6c6961",
+          panel: "rgba(255,255,255,0.68)", panelSolid: "#faf8f2",
+          line: "rgba(17,17,15,0.15)", accent: "#11110f", accentText: "#f3f0e8"
+        },
+        warm: {
+          bg: "#f3dfc1", dot: "#39271d", text: "#39271d", muted: "#765f50",
+          panel: "rgba(255,248,236,0.70)", panelSolid: "#fff5e6",
+          line: "rgba(57,39,29,0.17)", accent: "#7b3f24", accentText: "#fff7ed"
+        },
+        sage: {
+          bg: "#dce4d5", dot: "#17251b", text: "#17251b", muted: "#56655a",
+          panel: "rgba(246,250,243,0.70)", panelSolid: "#f2f6ef",
+          line: "rgba(23,37,27,0.17)", accent: "#345c42", accentText: "#f4faf2"
+        },
+        blueprint: {
+          bg: "#dbe7ef", dot: "#102b3a", text: "#102b3a", muted: "#526b78",
+          panel: "rgba(244,250,253,0.72)", panelSolid: "#f2f8fb",
+          line: "rgba(16,43,58,0.17)", accent: "#1e5875", accentText: "#f4fbff"
+        },
+        night: {
+          bg: "#17191d", dot: "#eef0e8", text: "#eef0e8", muted: "#a5a9af",
+          panel: "rgba(37,40,46,0.78)", panelSolid: "#25282e",
+          line: "rgba(238,240,232,0.16)", accent: "#eef0e8", accentText: "#17191d"
+        },
+        contrast: {
+          bg: "#ffffff", dot: "#000000", text: "#000000", muted: "#525252",
+          panel: "rgba(255,255,255,0.92)", panelSolid: "#ffffff",
+          line: "rgba(0,0,0,0.22)", accent: "#000000", accentText: "#ffffff"
+        }
+      };
+
+      const canvas = document.getElementById("dotCanvas");
+      const ctx = canvas.getContext("2d", { alpha: true });
+      const introScreen = document.getElementById("introScreen");
+      const quizScreen = document.getElementById("quizScreen");
+      const summaryScreen = document.getElementById("summaryScreen");
+      const toolbar = document.getElementById("toolbar");
+      const flashLabel = document.getElementById("flashLabel");
+
+      const startButton = document.getElementById("startButton");
+      const nextButton = document.getElementById("nextButton");
+      const quitButton = document.getElementById("quitButton");
+      const playAgainButton = document.getElementById("playAgainButton");
+      const homeButton = document.getElementById("homeButton");
+      const fullscreenButton = document.getElementById("fullscreenButton");
+      const statsButton = document.getElementById("statsButton");
+
+      const paletteSelect = document.getElementById("paletteSelect");
+      const bgSwatch = document.getElementById("bgSwatch");
+      const dotSwatch = document.getElementById("dotSwatch");
+
+      const answerGrid = document.getElementById("answerGrid");
+      const resultText = document.getElementById("resultText");
+      const roundLabel = document.getElementById("roundLabel");
+      const scoreText = document.getElementById("scoreText");
+      const sessionErrorText = document.getElementById("sessionErrorText");
+
+      const summaryScore = document.getElementById("summaryScore");
+      const summaryText = document.getElementById("summaryText");
+      const summaryStats = document.getElementById("summaryStats");
+
+      const statsDialog = document.getElementById("statsDialog");
+      const closeStatsButton = document.getElementById("closeStatsButton");
+      const resetStatsButton = document.getElementById("resetStatsButton");
+      const lifetimeStats = document.getElementById("lifetimeStats");
+      const rankList = document.getElementById("rankList");
+
+      let target = 0;
+      let currentOptions = [];
+      let mode = "5";
+      let session = freshSession();
+      let lifetime = loadLifetime();
+      let activePalette = "paper";
+      let gameActive = false;
+
+      function freshSession() {
+        return {
+          rounds: 0,
+          exact: 0,
+          sumPctError: 0,
+          rankCounts: [0, 0, 0, 0, 0, 0]
+        };
+      }
+
+      function defaultLifetime() {
+        return {
+          totalRounds: 0,
+          exact: 0,
+          sumPctError: 0,
+          bestPctError: null,
+          rankCounts: [0, 0, 0, 0, 0, 0],
+          completedGames: 0,
+          history: []
+        };
+      }
+
+      function loadLifetime() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (!parsed || !Array.isArray(parsed.rankCounts)) return defaultLifetime();
+          return { ...defaultLifetime(), ...parsed };
+        } catch {
+          return defaultLifetime();
+        }
+      }
+
+      function saveLifetime() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(lifetime));
+      }
+
+      function loadPrefs() {
+        try {
+          return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
+        } catch {
+          return {};
+        }
+      }
+
+      function savePrefs() {
+        localStorage.setItem(PREFS_KEY, JSON.stringify({
+          palette: activePalette,
+          mode
+        }));
+      }
+
+      const formatNumber = value => new Intl.NumberFormat("en-GB").format(value);
+      const formatPct = value => {
+        if (!Number.isFinite(value)) return "—";
+        if (value < 0.05) return "<0.1%";
+        if (value < 10) return `${value.toFixed(1)}%`;
+        return `${Math.round(value)}%`;
+      };
+
+      function randomLogInt(min, max) {
+        const lo = Math.log(min);
+        const hi = Math.log(max);
+        return Math.max(min, Math.min(max, Math.round(Math.exp(lo + Math.random() * (hi - lo)))));
+      }
+
+      function makeTarget() {
+        return randomLogInt(MIN_DOTS, MAX_DOTS);
+      }
+
+      function applyPalette(name) {
+        activePalette = palettes[name] ? name : "paper";
+        const p = palettes[activePalette];
+        const root = document.documentElement.style;
+        root.setProperty("--bg", p.bg);
+        root.setProperty("--dot", p.dot);
+        root.setProperty("--text", p.text);
+        root.setProperty("--muted", p.muted);
+        root.setProperty("--panel", p.panel);
+        root.setProperty("--panel-solid", p.panelSolid);
+        root.setProperty("--line", p.line);
+        root.setProperty("--accent", p.accent);
+        root.setProperty("--accent-text", p.accentText);
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", p.bg);
+        bgSwatch.style.background = p.bg;
+        dotSwatch.style.background = p.dot;
+        savePrefs();
+      }
+
+      function hexToRgb(hex) {
+        const clean = hex.replace("#", "");
+        const value = Number.parseInt(clean, 16);
+        return {
+          r: (value >> 16) & 255,
+          g: (value >> 8) & 255,
+          b: value & 255
+        };
+      }
+
+      function xorshift(seed) {
+        let state = seed >>> 0 || 0x9e3779b9;
+        return () => {
+          state ^= state << 13;
+          state ^= state >>> 17;
+          state ^= state << 5;
+          return state >>> 0;
+        };
+      }
+
+      function drawDots(count) {
+        const cssWidth = Math.max(1, window.innerWidth);
+        const cssHeight = Math.max(1, window.innerHeight);
+        const deviceScale = Math.min(window.devicePixelRatio || 1, 2);
+        const baseArea = cssWidth * cssHeight;
+
+        // Dense rounds are plotted onto a larger hidden pixel surface, capped
+        // at roughly eight million pixels. This gives a million-dot round
+        // breathing room without creating a gigantic canvas on a 4K display.
+        const desiredPixelsPerDot = count > 100_000 ? 7 : count > 30_000 ? 4 : 2;
+        const desiredArea = Math.min(8_000_000, Math.max(baseArea, count * desiredPixelsPerDot));
+        const densityScale = Math.sqrt(desiredArea / baseArea);
+        const renderScale = count <= 25_000
+          ? Math.max(1, deviceScale)
+          : Math.max(1, densityScale);
+
+        const width = Math.max(1, Math.round(cssWidth * renderScale));
+        const height = Math.max(1, Math.round(cssHeight * renderScale));
+
+        canvas.width = width;
+        canvas.height = height;
+        canvas.style.background = palettes[activePalette].bg;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = palettes[activePalette].dot;
+
+        const aspect = width / height;
+
+        if (count <= 25_000) {
+          const cols = Math.max(1, Math.ceil(Math.sqrt(count * aspect)));
+          const rows = Math.max(1, Math.ceil(count / cols));
+          const cellW = width / cols;
+          const cellH = height / rows;
+          const radius = Math.max(1.1, Math.min(7 * renderScale, Math.min(cellW, cellH) * 0.27));
+          const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
+
+          ctx.beginPath();
+          for (let i = 0; i < count; i++) {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const jx = 0.14 + (rand() / 4294967296) * 0.72;
+            const jy = 0.14 + (rand() / 4294967296) * 0.72;
+            const x = (col + jx) * cellW;
+            const y = (row + jy) * cellH;
+            ctx.moveTo(x + radius, y);
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+          }
+          ctx.fill();
+          return;
+        }
+
+        // For dense fields, draw exact single-pixel microdots into transparent
+        // ImageData. A compact bitset prevents overlaps, so 1,000,000 means
+        // exactly 1,000,000 visible marks.
+        const totalPixels = width * height;
+        const image = ctx.createImageData(width, height);
+        const data = image.data;
+        const used = new Uint8Array(Math.ceil(totalPixels / 8));
+        const rand = xorshift((Math.random() * 0xffffffff) >>> 0);
+        const rgb = hexToRgb(palettes[activePalette].dot);
+
+        let placed = 0;
+        while (placed < count) {
+          const pixel = rand() % totalPixels;
+          const byteIndex = pixel >> 3;
+          const bitMask = 1 << (pixel & 7);
+          if (used[byteIndex] & bitMask) continue;
+          used[byteIndex] |= bitMask;
+
+          const offset = pixel * 4;
+          data[offset] = rgb.r;
+          data[offset + 1] = rgb.g;
+          data[offset + 2] = rgb.b;
+          data[offset + 3] = 255;
+          placed++;
+        }
+
+        ctx.putImageData(image, 0, 0);
+      }
+
+      function optionDistance(a, b) {
+        return Math.abs(Math.log(Math.max(1, a) / Math.max(1, b)));
+      }
+
+      function isFarEnough(candidate, values) {
+        return values.every(value => {
+          const larger = Math.max(candidate, value);
+          const smaller = Math.max(1, Math.min(candidate, value));
+          return larger / smaller >= MIN_OPTION_RATIO;
+        });
+      }
+
+      function makeOptions(targetValue) {
+        const values = [targetValue];
+        const plans = [
+          { side: -1, min: 1.75, max: 2.55 },
+          { side: 1, min: 1.75, max: 2.55 },
+          { side: -1, min: 3.4, max: 9.0 },
+          { side: 1, min: 3.4, max: 9.0 }
+        ].sort(() => Math.random() - 0.5);
+
+        // Two moderately plausible alternatives and two broader alternatives
+        // are attempted first. All five values must remain at least 1.70× apart.
+        for (const plan of plans) {
+          for (let attempt = 0; attempt < 120; attempt++) {
+            const factor = Math.exp(
+              Math.log(plan.min) + Math.random() * (Math.log(plan.max) - Math.log(plan.min))
+            );
+            const raw = plan.side < 0 ? targetValue / factor : targetValue * factor;
+            const candidate = Math.max(MIN_DOTS, Math.min(MAX_DOTS, Math.round(raw)));
+            if (candidate === targetValue || values.includes(candidate)) continue;
+            if (!isFarEnough(candidate, values)) continue;
+            values.push(candidate);
+            break;
+          }
+        }
+
+        // Boundary fallback for targets near 1 or 1,000,000.
+        const logMin = Math.log(MIN_DOTS);
+        const logMax = Math.log(MAX_DOTS);
+        let attempts = 0;
+        while (values.length < 5 && attempts < 5000) {
+          attempts++;
+          const candidate = Math.max(
+            MIN_DOTS,
+            Math.min(
+              MAX_DOTS,
+              Math.round(Math.exp(logMin + Math.random() * (logMax - logMin)))
+            )
+          );
+          if (candidate === targetValue || values.includes(candidate)) continue;
+          if (!isFarEnough(candidate, values)) continue;
+          values.push(candidate);
+        }
+
+        const factors = [1.8, 3.4, 6.5, 12.5, 24, 48, 96, 190, 380];
+        for (const factor of factors) {
+          for (const candidate of [
+            Math.max(MIN_DOTS, Math.round(targetValue / factor)),
+            Math.min(MAX_DOTS, Math.round(targetValue * factor))
+          ]) {
+            if (values.length >= 5) break;
+            if (candidate !== targetValue && !values.includes(candidate) && isFarEnough(candidate, values)) {
+              values.push(candidate);
+            }
+          }
+        }
+
+        let fallback = 1;
+        while (values.length < 5) {
+          const candidate = Math.min(MAX_DOTS, Math.max(MIN_DOTS, Math.round(1.8 ** fallback)));
+          fallback++;
+          if (!values.includes(candidate) && isFarEnough(candidate, values)) values.push(candidate);
+        }
+
+        return values.slice(0, 5).sort(() => Math.random() - 0.5);
+      }
+
+      function getRank(guess, options, answer) {
+        const ordered = [...options].sort((a, b) => optionDistance(a, answer) - optionDistance(b, answer));
+        return ordered.indexOf(guess) + 1;
+      }
+
+      function renderAnswers() {
+        answerGrid.innerHTML = "";
+        resultText.textContent = "";
+        nextButton.classList.add("hidden");
+        quitButton.classList.toggle("hidden", mode !== "continuous");
+
+        currentOptions = makeOptions(target);
+
+        for (const value of currentOptions) {
+          const button = document.createElement("button");
+          button.className = "answer";
+          button.type = "button";
+          button.textContent = formatNumber(value);
+          button.dataset.value = String(value);
+          button.addEventListener("click", () => chooseAnswer(button, value));
+          answerGrid.appendChild(button);
+        }
+      }
+
+      function updateSessionMeta() {
+        const average = session.rounds ? session.sumPctError / session.rounds : NaN;
+        scoreText.textContent = `Exact: ${session.exact}`;
+        sessionErrorText.textContent = `Average error: ${formatPct(average)}`;
+
+        if (mode === "continuous") {
+          roundLabel.textContent = `Round ${session.rounds + 1} · Continuous`;
+        } else {
+          roundLabel.textContent = `Round ${session.rounds + 1} of ${mode}`;
+        }
+      }
+
+      function recordGuess(guess, rank, pctError) {
+        session.rounds++;
+        session.sumPctError += pctError;
+        session.rankCounts[rank]++;
+        if (rank === 1) session.exact++;
+
+        lifetime.totalRounds++;
+        lifetime.sumPctError += pctError;
+        lifetime.rankCounts[rank]++;
+        if (rank === 1) lifetime.exact++;
+        lifetime.bestPctError = lifetime.bestPctError === null
+          ? pctError
+          : Math.min(lifetime.bestPctError, pctError);
+
+        lifetime.history.push({
+          target,
+          guess,
+          rank,
+          pctError,
+          mode,
+          time: Date.now()
+        });
+        if (lifetime.history.length > 1000) lifetime.history.shift();
+        saveLifetime();
+      }
+
+      function chooseAnswer(button, value) {
+        const rank = getRank(value, currentOptions, target);
+        const pctError = Math.abs(value - target) / target * 100;
+        const direction = value === target ? "" : value < target ? "low" : "high";
+
+        recordGuess(value, rank, pctError);
+
+        for (const answer of answerGrid.querySelectorAll(".answer")) {
+          answer.disabled = true;
+          const answerValue = Number(answer.dataset.value);
+          if (answerValue === target) answer.classList.add("correct");
+        }
+
+        if (rank === 1) {
+          resultText.innerHTML = `Correct.<span class="result-subline">Exactly ${formatNumber(target)} dots.</span>`;
+        } else {
+          button.classList.remove("correct");
+          button.classList.add("wrong");
+          const rankNames = ["", "closest", "2nd closest", "3rd closest", "4th closest", "5th closest"];
+          resultText.innerHTML =
+            `The answer was ${formatNumber(target)}.` +
+            `<span class="result-subline">Your choice was ${formatPct(pctError)} ${direction} and ranked ${rankNames[rank]}.</span>`;
+        }
+
+        const average = session.sumPctError / session.rounds;
+        scoreText.textContent = `Exact: ${session.exact}`;
+        sessionErrorText.textContent = `Average error: ${formatPct(average)}`;
+
+        const limit = mode === "continuous" ? Infinity : Number(mode);
+        if (session.rounds >= limit) {
+          nextButton.textContent = "See results";
+        } else {
+          nextButton.textContent = "Next round";
+        }
+        nextButton.classList.remove("hidden");
+      }
+
+      function beginRound() {
+        target = makeTarget();
+        gameActive = true;
+
+        introScreen.classList.add("hidden");
+        quizScreen.classList.add("hidden");
+        summaryScreen.classList.add("hidden");
+        toolbar.classList.add("hidden");
+        canvas.style.display = "block";
+        flashLabel.classList.remove("hidden");
+
+        drawDots(target);
+
+        window.setTimeout(() => {
+          canvas.style.display = "none";
+          flashLabel.classList.add("hidden");
+          updateSessionMeta();
+          renderAnswers();
+          quizScreen.classList.remove("hidden");
+          toolbar.classList.remove("hidden");
+        }, DISPLAY_MS);
+      }
+
+      function startGame() {
+        mode = document.querySelector('input[name="mode"]:checked').value;
+        session = freshSession();
+        savePrefs();
+        beginRound();
+      }
+
+      function finishGame() {
+        gameActive = false;
+        lifetime.completedGames++;
+        saveLifetime();
+
+        quizScreen.classList.add("hidden");
+        summaryScreen.classList.remove("hidden");
+        toolbar.classList.remove("hidden");
+
+        const denominator = mode === "continuous" ? session.rounds : Number(mode);
+        summaryScore.textContent = `${session.exact}/${denominator}`;
+        const average = session.rounds ? session.sumPctError / session.rounds : 0;
+        summaryText.textContent =
+          `You made ${session.exact} exact ${session.exact === 1 ? "guess" : "guesses"} with an average error of ${formatPct(average)}.`;
+
+        const secondClosest = session.rankCounts[2] || 0;
+        const nearestWrong = session.rounds - session.exact
+          ? (secondClosest / (session.rounds - session.exact)) * 100
+          : 0;
+
+        summaryStats.innerHTML = [
+          metric(formatPct(average), "average error"),
+          metric(secondClosest, "2nd closest"),
+          metric(formatPct(nearestWrong), "wrong guesses ranked 2nd"),
+          metric(session.rounds, "rounds played")
+        ].join("");
+      }
+
+      function metric(value, label) {
+        return `<div class="stat"><strong>${value}</strong><span>${label}</span></div>`;
+      }
+
+      function showHome() {
+        gameActive = false;
+        quizScreen.classList.add("hidden");
+        summaryScreen.classList.add("hidden");
+        introScreen.classList.remove("hidden");
+        toolbar.classList.remove("hidden");
+      }
+
+      function renderLifetimeStats() {
+        const average = lifetime.totalRounds
+          ? lifetime.sumPctError / lifetime.totalRounds
+          : NaN;
+        const exactRate = lifetime.totalRounds
+          ? lifetime.exact / lifetime.totalRounds * 100
+          : 0;
+
+        lifetimeStats.innerHTML = [
+          metric(lifetime.totalRounds, "total guesses"),
+          metric(lifetime.exact, "exact"),
+          metric(formatPct(exactRate), "exact rate"),
+          metric(formatPct(average), "average error"),
+          metric(lifetime.rankCounts[2] || 0, "2nd closest"),
+          metric(lifetime.rankCounts[3] || 0, "3rd closest"),
+          metric(lifetime.rankCounts[4] || 0, "4th closest"),
+          metric(lifetime.rankCounts[5] || 0, "5th closest")
+        ].join("");
+
+        const maxCount = Math.max(1, ...lifetime.rankCounts.slice(1));
+        const labels = ["Exact", "2nd closest", "3rd closest", "4th closest", "5th closest"];
+        rankList.innerHTML = labels.map((label, index) => {
+          const count = lifetime.rankCounts[index + 1] || 0;
+          const width = count / maxCount * 100;
+          return `
+            <div class="rank-row">
+              <span>${label}</span>
+              <div class="rank-track" aria-hidden="true">
+                <div class="rank-fill" style="width:${width}%"></div>
+              </div>
+              <strong>${count}</strong>
+            </div>
+          `;
+        }).join("");
+      }
+
+      async function toggleFullscreen() {
+        try {
+          const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+          if (!fullscreenElement) {
+            const request = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+            if (request) await request.call(document.documentElement);
+          } else {
+            const exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) await exit.call(document);
+          }
+        } catch {
+          // Some browsers block fullscreen for local files. The game remains usable.
+        }
+      }
+
+      function updateFullscreenLabel() {
+        const active = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+        fullscreenButton.textContent = active ? "Exit full screen" : "Full screen";
+      }
+
+      paletteSelect.addEventListener("change", () => applyPalette(paletteSelect.value));
+      startButton.addEventListener("click", startGame);
+
+      nextButton.addEventListener("click", () => {
+        const limit = mode === "continuous" ? Infinity : Number(mode);
+        if (session.rounds >= limit) finishGame();
+        else beginRound();
+      });
+
+      quitButton.addEventListener("click", finishGame);
+      playAgainButton.addEventListener("click", () => {
+        session = freshSession();
+        beginRound();
+      });
+      homeButton.addEventListener("click", showHome);
+
+      statsButton.addEventListener("click", () => {
+        renderLifetimeStats();
+        statsDialog.showModal();
+      });
+      closeStatsButton.addEventListener("click", () => statsDialog.close());
+
+      resetStatsButton.addEventListener("click", () => {
+        const confirmed = window.confirm("Reset all stored statistics on this device?");
+        if (!confirmed) return;
+        lifetime = defaultLifetime();
+        saveLifetime();
+        renderLifetimeStats();
+      });
+
+      fullscreenButton.addEventListener("click", toggleFullscreen);
+      document.addEventListener("fullscreenchange", updateFullscreenLabel);
+      document.addEventListener("webkitfullscreenchange", updateFullscreenLabel);
+
+      const prefs = loadPrefs();
+      if (prefs.palette && palettes[prefs.palette]) {
+        paletteSelect.value = prefs.palette;
+      }
+      if (["5", "10", "continuous"].includes(prefs.mode)) {
+        const savedMode = document.querySelector(`input[name="mode"][value="${prefs.mode}"]`);
+        if (savedMode) savedMode.checked = true;
+        mode = prefs.mode;
+      }
+      applyPalette(paletteSelect.value);
+      updateFullscreenLabel();
+    })();
+  </script>
+</body>
+</html>
